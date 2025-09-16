@@ -97,7 +97,7 @@ target "app" {
   dockerfile = "$TEMP_DIR/Dockerfile"
   context    = "$ABS_CONTEXT"
   tags       = ["$APP_IMAGE_NAME"]
-  platforms  = ["$ARCHS_AVAILABLE"]
+  platforms  = ["$PLATFORM"]
   no-cache   = true
   provenance = false
 }

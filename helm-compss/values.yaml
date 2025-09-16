@@ -1,10 +1,8 @@
 # Default values for compss-app.
 # This is a YAML-formatted file.
 # Declare variables to be passed into your templates.
-#oriolmac/compss-test:latest
-#registry.gitlab.bsc.es/ppc/benchmarks/smart-city/smart-city-compss:1.0-3.3-final2-arm
 image:
-  repository: oriolmac/build-test
+  repository: oriolmac/compss-elixirion
   pullPolicy: IfNotPresent
   tag: latest
 
@@ -39,12 +37,12 @@ compss:
     #  vertical_increasing_cpus: 2 # (integer)
 
   worker:
-    number: 2
+    number: 2  # total worker pods
     labels:
       node: worker
     resources:
-      cpu: 1
-      memory: 2  # in gigabytes
+      cpu: 1  # CPUs per worker
+      memory: 2  # GiB per worker
     ports:
       name: ssh
     prometheusClient: 
