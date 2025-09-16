@@ -37,7 +37,7 @@ compss:
     #  vertical_increasing_cpus: 2 # (integer)
 
   worker:
-    number: 2  # total worker pods
+    number: 1  # total worker pods
     labels:
       node: worker
     resources:
