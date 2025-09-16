@@ -1,0 +1,33 @@
+{{- $workerCount := .Values.compss.worker.number | int }}  
+{{- range $i := until $workerCount }} 
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ $.Release.Namespace }}
+  name: {{ $.Release.Name }}-worker-{{ $i }}
+  labels:
+    {{- include "compss-smartcity.labels" $ | nindent 4 }}
+spec:
+  selector:
+    app: compss 
+    wf_id: {{ $.Release.Name }}
+    role: worker-{{ $i }}
+  ports:
+  - name: port-22
+    protocol: TCP
+    port: 22
+    targetPort: 22-port
+  - name: port-43001  
+    protocol: TCP
+    port: 43001
+    targetPort: 43001-port 
+  - name: port-43002
+    protocol: TCP
+    port: 43002
+    targetPort: 43002-port
+  - name: port-49049
+    protocol: TCP
+    port: 49049
+    targetPort: 49049-port
+---
+{{- end }}

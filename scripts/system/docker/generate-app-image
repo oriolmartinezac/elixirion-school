@@ -1,0 +1,139 @@
+#!/bin/bash
+
+GENERATORS_DIR=$(dirname "$0")
+source "$GENERATORS_DIR/aux_functions.sh"
+
+ABS_CONTEXT=$1
+BASE_IMAGE_NAME=$2
+APP_IMAGE_NAME=$3
+REQUIREMENTS_PATH=$4
+
+# Prepare environment for substitution
+export BASE_IMAGE_NAME
+export ABS_CONTEXT
+
+# Hash id for temp_dir
+RAND=$(head -c 16 /dev/urandom | sha256sum | cut -c1-8)
+export RAND
+
+TEMP_DIR="${ABS_CONTEXT}/tmp_build_${RAND}"
+mkdir -p "$TEMP_DIR"
+
+if [ -n "$REQUIREMENTS_PATH" ]; then
+    cp "$REQUIREMENTS_PATH" "$TEMP_DIR/requirements.txt"
+
+    export PYTHON_INSTALL_LINE="RUN pip install -r ${ABS_CONTEXT}/requirements.txt"
+else
+    export PYTHON_INSTALL_LINE=""
+fi
+
+# Generate Dockerfile in TEMP_DIR
+cat <<EOF | envsubst > "$TEMP_DIR/Dockerfile"
+FROM alpine:latest AS base-ssh
+
+RUN apk update && apk add --no-cache openssh && \
+    mkdir -p /root/.ssh && \
+    ssh-keygen -q -t rsa -N "" -f /root/.ssh/id_rsa && \
+    cp /root/.ssh/id_rsa.pub /root/.ssh/authorized_keys && \
+    chmod 700 /root/.ssh && chmod 600 /root/.ssh/*
+
+FROM scratch AS export-ssh
+
+FROM scratch AS export-ssh
+COPY --from=base-ssh /root/.ssh /.ssh
+
+FROM \${BASE_IMAGE_NAME}
+
+RUN rm -rf /root/.ssh
+
+COPY tmp_build_\${RAND}/.ssh /root/.ssh
+
+RUN chmod 700 /root/.ssh && chmod 600 /root/.ssh/*
+
+RUN mkdir -p \${ABS_CONTEXT} 
+
+COPY . "\${ABS_CONTEXT}"
+
+RUN rm -rf "\${ABS_CONTEXT}"/tmp_build_\${RAND}
+
+\${PYTHON_INSTALL_LINE}
+EOF
+
+ARCHS_AVAILABLE=$(docker buildx imagetools inspect "$BASE_IMAGE_NAME" 2>/dev/null \
+    | grep -oP 'Platform:\s+\Klinux/\w+' \
+    | sort -u | paste -sd, -)
+
+if [ -z "$ARCHS_AVAILABLE" ]; then
+    ERROR "Could not detect supported platforms from base image '$BASE_IMAGE_NAME'."
+    exit 1
+fi
+
+HOST_ARCH=$(uname -m)
+
+case "$HOST_ARCH" in
+    x86_64) PLATFORM="linux/amd64" ;;
+    aarch64) PLATFORM="linux/arm64" ;;
+    *) echo "Unsupported architecture: $HOST_ARCH" && exit 1 ;;
+esac
+
+# Generate the docker-bake file in TEMP_DIR
+cat > "$TEMP_DIR/docker-bake.hcl" <<EOF
+group "default" {
+  targets = ["app"]
+}
+
+target "ssh-keys" {
+  dockerfile = "$TEMP_DIR/Dockerfile"
+  context    = "$ABS_CONTEXT"
+  target     = "export-ssh"
+  platforms  = ["$PLATFORM"]
+  provenance = false
+  no-cache = true
+  output     = ["type=local,dest=$TEMP_DIR"]
+}
+
+target "app" {
+  dockerfile = "$TEMP_DIR/Dockerfile"
+  context    = "$ABS_CONTEXT"
+  tags       = ["$APP_IMAGE_NAME"]
+  platforms  = ["$ARCHS_AVAILABLE"]
+  no-cache   = true
+  provenance = false
+}
+EOF
+
+if command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
+    KUBE_AVAILABLE=true
+else
+    KUBE_AVAILABLE=false
+fi
+
+KUBE_NAMESPACE="buildkit"
+BUILDER_FLAG=""
+
+if [ "$KUBE_AVAILABLE" = true ] && kubectl get deployment -n $KUBE_NAMESPACE | grep -q '^kube-builder.*[[:space:]]1/1[[:space:]]'; then
+    BUILDER_FLAG="--builder kube-builder"
+    ECHO "Running docker buildx bake with Kubernetes builder..."
+else
+    if [ "$KUBE_AVAILABLE" = true ]; then
+        ERROR "Kubernetes is available, but the 'kube-builder' builder is not running."
+        ERROR "Check if the BuildKit deployment is running in namespace '$KUBE_NAMESPACE'. If not, launch it in the root directory with 'make prepare'."
+        exit 1
+    fi
+    ECHO "No Kubernetes running detected, using default builder..."
+fi
+
+(
+    cd "$ABS_CONTEXT"
+
+    ECHO "Generating the base-ssh"
+    docker buildx bake ssh-keys --no-cache --file "$TEMP_DIR/docker-bake.hcl" --provenance=false
+
+    docker buildx bake app --no-cache --file "$TEMP_DIR/docker-bake.hcl" --push $BUILDER_FLAG --provenance=false
+)
+
+rm -rf "$TEMP_DIR"
+ASSERT "There was a problem creating the image"
+
+echo
+exit 0

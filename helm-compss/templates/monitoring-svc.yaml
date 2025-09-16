@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ .Release.Name }}-monitor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    release: {{ .Values.monitoring.servicemonitor.releaseName }}
+    {{- include "compss-smartcity.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "compss-smartcity.labels" . | nindent 4 }}
+  endpoints:
+  - port: prometheus
+    interval: 5s
+    scrapeTimeout: 5s
+    path: /metrics
+    scheme: http

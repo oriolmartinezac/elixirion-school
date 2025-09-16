@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ .Release.Name }}-master
+spec:
+  selector:
+    app: compss 
+    wf_id: {{ $.Release.Name }}
+    role: master
+  ports:
+  - name: port-5001
+    protocol: UDP
+    port: 5001
+    targetPort: 5001-port
+  - name: port-43100
+    protocol: TCP
+    port: 43100
+    targetPort: 43100-port
+  {{- if eq .Values.compss.master.prometheusClient.enabled true }}
+  - name: prometheus
+    protocol: TCP
+    port: {{ .Values.compss.master.prometheusClient.containerPort }}
+    targetPort: prometheus
+  {{- end }}
+  {{- if .Values.monitoring.enabled }}
+  - name: monitoring
+    protocol: TCP
+    port: {{ .Values.monitoring.port }}
+    targetPort: monitoring
+  {{- end }}

@@ -1,0 +1,142 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ .Release.Name }}-master
+  labels:
+    {{- include "compss-smartcity.labels" . | nindent 4 }}
+    app: compss 
+    wf_id: {{ $.Release.Name }}
+    role: master
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: compss 
+      wf_id: {{ $.Release.Name }}
+      role: master
+  template:
+    metadata:
+      labels:
+        app: compss 
+        wf_id: {{ $.Release.Name }}
+        role: master
+    spec:
+      serviceAccountName: {{ .Release.Name }}-sa
+      initContainers:
+      - name: wait-for-workers
+        image: busybox
+        command:
+          - sh
+          - -c
+          - |
+            for i in $(seq 1 {{ $.Values.compss.worker.number }}); do
+              worker_index=$((i - 1))
+              until nslookup {{ .Release.Name }}-worker-${worker_index}.{{ .Release.Namespace }}.svc.cluster.local; do
+                echo "Waiting for {{ .Release.Name }}-worker-${worker_index}";
+                sleep 2;
+              done;
+            done
+      containers:
+      {{- if .Values.mqtt.enabled }}
+      - name: mqtt
+        image: "{{ .Values.mqtt.image.repository }}:{{ .Values.mqtt.image.tag }}"
+        imagePullPolicy: {{ .Values.mqtt.image.pullPolicy }}
+        ports:
+        - name: mqtt
+          containerPort: {{ .Values.mqtt.port }}
+          protocol: TCP
+      {{- end }}
+      {{- if .Values.monitoring.enabled }}
+      - name: monitoring
+        image: "{{ .Values.monitoring.image.repository }}:{{ .Values.monitoring.image.tag }}"
+        imagePullPolicy: {{ .Values.monitoring.image.pullPolicy }}
+        env:
+          - name: PROMETHEUS_SERVER_URL
+            value: {{ .Values.monitoring.prometheusUrl | quote }}
+        ports:
+        - name: monitoring
+          containerPort: {{ .Values.monitoring.port }}
+          protocol: TCP
+      {{- end }}
+      {{- if eq .Values.compss.master.prometheusClient.enabled true }}
+      - name: redis-server
+        image: "redis:latest"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["redis-server"]
+        ports:
+        - containerPort: {{ .Values.compss.master.prometheusClient.redisContainerPort }}
+          name: redis
+      - name: prometheus-client
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: 
+          - "python3"
+          - "{{ .Values.app.context.folderPath }}/metrics_client_counter_final.py"
+          - "--redis_port"
+          - "{{ .Values.compss.master.prometheusClient.redisContainerPort }}"
+          - "--prometheus_port"
+          - "{{ .Values.compss.master.prometheusClient.containerPort }}"
+          #- "--buckets"
+          #- "{{ .Values.compss.master.prometheusClient.buckets }}"
+        ports:
+        - containerPort: {{ .Values.compss.master.prometheusClient.containerPort }}
+          name: prometheus
+      {{- end}}
+      - name: redis-server
+        image: "redis:latest"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command: ["redis-server"]
+        ports:
+        - containerPort: {{ .Values.compss.master.prometheusClient.redisContainerPort }}
+          name: redis
+      - name: master
+        image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        env: 
+        - name: DEPLOYMENT_NAME
+          value: {{ .Release.Name }}
+        - name: DEPLOYMENT_NAMESPACE
+          value: {{ .Release.Namespace }}
+        command: [ "/opt/COMPSs/Runtime/scripts/system/kubernetes/master.sh" ]
+        args: 
+          - "{{ .Release.Namespace }}"
+          - "{{ .Values.compss.worker.number }}"
+          - "{{ .Values.compss.worker.resources.cpu }}"
+          - "{{ .Values.compss.worker.resources.memory }}"
+          - "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          - "{{ .Values.app.context.folderPath }}"  # app_dir
+          - "0"   # min_vms
+          - "0"   # max_vms
+          - "0"   # creation_time
+          - "43100" # master port
+          {{- $schedparams := "" }}
+          {{- range $key, $value := .Values.compss.master.scheduler_config }}
+            {{- if ne $key "" }}  
+              {{- $schedparams = printf "%s%s=%v;" $schedparams $key $value }}
+            {{- end }}
+          {{- end }}
+          - "{{ $schedparams }}"
+          {{- $params := "" }}
+          {{- range $key, $value := .Values.app.params }}
+            {{- if and (ne $key "") }}  
+              {{- $params = printf "%s --%s %s" $params $key $value }}  
+            {{- end }}
+          {{- end }}
+          - "--scheduler_config_file={{ .Values.app.context.folderPath }}/sched.config --scheduler=es.bsc.compss.scheduler.lookahead.locality.LocalityTS -d -t -g {{ .Values.app.context.folderPath }}/{{ .Values.app.context.file }}{{ $params }}"
+        ports:
+        - name: 43100-port
+          containerPort: 43100 
+        - name: 5001-port
+          containerPort: 5001
+        volumeMounts:
+      {{- if and .Values.compss.master.volume }}
+          - name: {{ .Release.Name }}-results
+            mountPath: /root/.COMPSs/ # mount path within the container 
+      {{- end }}
+      volumes:
+      {{- if .Values.compss.master.volume }}
+      - name: {{ .Release.Name }}-results
+        persistentVolumeClaim:
+          claimName: {{ .Release.Name }}-results
+      {{- end }}

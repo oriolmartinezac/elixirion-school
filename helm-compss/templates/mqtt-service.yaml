@@ -1,0 +1,21 @@
+{{- if .Values.mqtt.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  namespace: {{ .Release.Namespace }}
+  name: {{ .Release.Name }}-smartcity
+  labels:
+    {{- include "compss-smartcity.labels" . | nindent 4 }}
+spec:
+  type: NodePort
+  selector:
+    app: compss
+    wf_id: {{ .Release.Name }}
+    role: master
+  ports:
+    - name: mqtt
+      protocol: TCP
+      port: {{ .Values.mqtt.port }}
+      targetPort: mqtt
+      nodePort: {{ .Values.mqtt.nodePort | default 31883 }}
+{{- end }}
