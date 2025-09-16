@@ -1,0 +1,5 @@
+numpy
+scipy
+redis
+prometheus-client
+paho-mqtt
