@@ -70,7 +70,7 @@ monitoring:
 app:
   context:
     folderPath: /home/omartinez/elixiron-school/apps
-    file: app.py
+    file: matmul.py
   params:
     ### Example Matmul application parameters ###
     #num_blocks: "3"
