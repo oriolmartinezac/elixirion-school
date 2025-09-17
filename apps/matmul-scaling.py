@@ -110,6 +110,11 @@ def main(num_blocks, elems_per_block, seed, number_iterations):
         print("Total time: %f" % (multiplication_time - start_time))
         print("-----------------------------------------")
 
+
+        if n == 100:
+            # Scale the system up (vertical scaling)
+            r.set('verge_compss_vertical_scaling_trigger', 1)
+
 def parse_args():
     """
     Arguments parser.
