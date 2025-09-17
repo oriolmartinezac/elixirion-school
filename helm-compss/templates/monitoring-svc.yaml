@@ -11,7 +11,7 @@ spec:
     matchLabels:
       {{- include "compss-smartcity.labels" . | nindent 4 }}
   endpoints:
-  - port: prometheus
+  - port: monitoring
     interval: 5s
     scrapeTimeout: 5s
     path: /metrics

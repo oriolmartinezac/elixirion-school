@@ -41,8 +41,8 @@ compss:
     labels:
       node: worker
     resources:
-      cpu: 1  # CPUs per worker
-      memory: 2  # GiB per worker
+      cpu: 4  # CPUs per worker
+      memory: 4  # GiB per worker
     ports:
       name: ssh
     prometheusClient: 
@@ -73,9 +73,9 @@ app:
     file: matmul.py
   params:
     ### Example Matmul application parameters ###
-    #num_blocks: "3"
-    #elems_per_block: "1024"
-    #number_iterations: "1"
+    #num_blocks: "2"
+    #elems_per_block: "256"
+    #number_iterations: "1000"
 
     ### Example Genetic algorithm application parameters ###
     #num_individuals: "100"
