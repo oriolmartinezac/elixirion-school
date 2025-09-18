@@ -75,7 +75,7 @@ app:
     ### Example Matmul application parameters ###
     num_blocks: "2"
     elems_per_block: "256"
-    number_iterations: "10000"
+    number_iterations: "50"
 
     ### Example Genetic algorithm application parameters ###
     #num_individuals: "100"
